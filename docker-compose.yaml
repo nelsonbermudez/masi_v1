@@ -1,0 +1,73 @@
+version: '3.9'
+
+services:
+  # Servicio de la base de datos MySQL
+  mysql-server:
+    image: mysql:8.0
+    container_name: mysql-server
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=zabbix
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - zabbix-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Servicio del servidor Zabbix
+  zabbix-server:
+    image: zabbix/zabbix-server-mysql:latest
+    container_name: zabbix-server
+    restart: always
+    depends_on:
+      mysql-server:
+        condition: service_healthy
+    environment:
+      - DB_SERVER_HOST=mysql-server
+      - MYSQL_DATABASE=zabbix
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+    ports:
+      - "10051:10051"
+    networks:
+      - zabbix-net
+    healthcheck:
+      test: ["CMD", "zabbix_server", "-R", "config_cache_reload"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Servicio de la interfaz web de Zabbix (con Nginx)
+  zabbix-web:
+    image: zabbix/zabbix-web-nginx-mysql:latest
+    container_name: zabbix-web
+    restart: always
+    depends_on:
+      - zabbix-server
+    ports:
+      - "8080:8080"
+    environment:
+      - ZBX_SERVER_HOST=zabbix-server
+      - DB_SERVER_HOST=mysql-server
+      - MYSQL_DATABASE=zabbix
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - PHP_TZ=America/Bogota # Cambia a tu zona horaria
+    networks:
+      - zabbix-net
+
+# Volúmenes para persistencia de datos
+volumes:
+  mysql_data:
+
+# Red para la comunicación entre contenedores
+networks:
+  zabbix-net:
+    driver: bridge
